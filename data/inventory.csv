@@ -1,0 +1,4 @@
+product_id,name,stock,base_threshold,adaptive_threshold,popularity_ewma,popularity_index
+PROD-001,Gaming Laptop X1,50,20,25.5,1.2,1.15
+PROD-002,Premium Coffee Beans,100,15,18.0,0.8,0.95
+PROD-003,Wireless Mouse Pro,75,25,30.0,1.5,1.42

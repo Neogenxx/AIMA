@@ -1,0 +1,1 @@
+timestamp,product_id,stock_after_sale,base_threshold,adaptive_threshold,predicted_demand_5d,popularity_index,restock_qty,reason,confidence

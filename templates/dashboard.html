@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIMA — Autonomous Inventory Intelligence</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Crimson+Text:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --black: #000000;
+            --white: #FFFFFF;
+            --gray-100: #F5F5F5;
+            --gray-200: #E5E5E5;
+            --gray-300: #D4D4D4;
+            --gray-400: #A3A3A3;
+            --gray-700: #404040;
+            --gray-800: #262626;
+            --gray-900: #171717;
+            --spacing: 8px;
+            --border-weight: 2px;
+            --mono: 'JetBrains Mono', monospace;
+            --serif: 'Crimson Text', serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--mono);
+            background: var(--white);
+            color: var(--black);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Animated noise background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.03;
+            z-index: 0;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            animation: grain 8s steps(10) infinite;
+        }
+
+        @keyframes grain {
+            0%, 100% { transform: translate(0, 0); }
+            10% { transform: translate(-5%, -10%); }
+            20% { transform: translate(-15%, 5%); }
+            30% { transform: translate(7%, -25%); }
+            40% { transform: translate(-5%, 25%); }
+            50% { transform: translate(-15%, 10%); }
+            60% { transform: translate(15%, 0%); }
+            70% { transform: translate(0%, 15%); }
+            80% { transform: translate(3%, 35%); }
+            90% { transform: translate(-10%, 10%); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: calc(var(--spacing) * 4);
+        }
+
+        /* Header */
+        header {
+            border-bottom: var(--border-weight) solid var(--black);
+            padding-bottom: calc(var(--spacing) * 3);
+            margin-bottom: calc(var(--spacing) * 6);
+            animation: slideDown 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        h1 {
+            font-family: var(--mono);
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+            margin-bottom: calc(var(--spacing) * 1);
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            font-family: var(--serif);
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            color: var(--gray-700);
+            font-style: italic;
+            letter-spacing: 0.01em;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: calc(var(--spacing) * 4);
+            margin-top: calc(var(--spacing) * 2);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--black);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Grid Layout */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: calc(var(--spacing) * 4);
+            margin-bottom: calc(var(--spacing) * 4);
+        }
+
+        .metrics-bar {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: calc(var(--spacing) * 2);
+            margin-bottom: calc(var(--spacing) * 4);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--white);
+            border: var(--border-weight) solid var(--black);
+            padding: calc(var(--spacing) * 3);
+            position: relative;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            animation: fadeIn 0.6s ease-out backwards;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 0 var(--black);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card:nth-child(1) { animation-delay: 0.1s; }
+        .card:nth-child(2) { animation-delay: 0.2s; }
+        .card:nth-child(3) { animation-delay: 0.3s; }
+        .card:nth-child(4) { animation-delay: 0.4s; }
+
+        .card-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            font-weight: 700;
+            margin-bottom: calc(var(--spacing) * 2);
+            border-bottom: 1px solid var(--gray-300);
+            padding-bottom: var(--spacing);
+        }
+
+        .metric-value {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: calc(var(--spacing) * 0.5);
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--gray-700);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        /* Tables */
+        .table-container {
+            overflow-x: auto;
+            margin: calc(var(--spacing) * 2) 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        thead {
+            border-bottom: var(--border-weight) solid var(--black);
+        }
+
+        th {
+            text-align: left;
+            padding: calc(var(--spacing) * 1.5);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.1em;
+        }
+
+        td {
+            padding: calc(var(--spacing) * 1.5);
+            border-bottom: 1px solid var(--gray-300);
+        }
+
+        tbody tr {
+            transition: background 0.2s;
+        }
+
+        tbody tr:hover {
+            background: var(--gray-100);
+        }
+
+        /* Status Badges */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid var(--black);
+        }
+
+        .status-ok { background: var(--white); color: var(--black); }
+        .status-low { background: var(--gray-900); color: var(--white); }
+        .status-critical { background: var(--black); color: var(--white); }
+
+        /* Popularity Bars */
+        .popularity-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing);
+        }
+
+        .bar-container {
+            flex: 1;
+            height: 20px;
+            background: var(--gray-200);
+            border: 1px solid var(--black);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: var(--black);
+            transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 5px,
+                rgba(255,255,255,0.1) 5px,
+                rgba(255,255,255,0.1) 10px
+            );
+        }
+
+        .bar-value {
+            font-size: 0.7rem;
+            font-weight: 700;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        /* Decisions List */
+        .decision-item {
+            padding: calc(var(--spacing) * 2);
+            border-left: 3px solid var(--black);
+            margin-bottom: calc(var(--spacing) * 2);
+            background: var(--gray-100);
+            transition: all 0.3s;
+        }
+
+        .decision-item:hover {
+            background: var(--gray-200);
+            border-left-width: 6px;
+        }
+
+        .decision-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing);
+        }
+
+        .decision-product {
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .decision-time {
+            font-size: 0.65rem;
+            color: var(--gray-700);
+            font-family: var(--mono);
+        }
+
+        .decision-type {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-bottom: var(--spacing);
+        }
+
+        .decision-type.restock {
+            color: var(--black);
+        }
+
+        .decision-reasoning {
+            font-size: 0.75rem;
+            color: var(--gray-700);
+            line-height: 1.5;
+            font-family: var(--serif);
+        }
+
+        .confidence-bar {
+            margin-top: var(--spacing);
+            height: 4px;
+            background: var(--gray-300);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: var(--black);
+            transition: width 1s ease-out;
+        }
+
+        /* Analysis Section */
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: calc(var(--spacing) * 3);
+            margin-top: calc(var(--spacing) * 3);
+        }
+
+        .comparison-item {
+            padding: calc(var(--spacing) * 2);
+            border: 1px solid var(--black);
+            background: var(--white);
+        }
+
+        .comparison-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: calc(var(--spacing) * 1.5);
+            font-weight: 700;
+        }
+
+        .comparison-values {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .value-item {
+            text-align: center;
+        }
+
+        .value-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .value-label {
+            font-size: 0.65rem;
+            color: var(--gray-700);
+            text-transform: uppercase;
+        }
+
+        .comparison-arrow {
+            font-size: 1.5rem;
+            color: var(--gray-400);
+        }
+
+        /* Loading State */
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--gray-300);
+            border-top: 2px solid var(--black);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Refresh Button */
+        .refresh-btn {
+            position: fixed;
+            bottom: calc(var(--spacing) * 4);
+            right: calc(var(--spacing) * 4);
+            width: 60px;
+            height: 60px;
+            background: var(--black);
+            color: var(--white);
+            border: none;
+            font-family: var(--mono);
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .refresh-btn:hover {
+            transform: rotate(180deg) scale(1.1);
+        }
+
+        .refresh-btn:active {
+            transform: rotate(180deg) scale(0.95);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: calc(var(--spacing) * 2);
+            }
+            
+            .header-meta {
+                flex-direction: column;
+                gap: var(--spacing);
+            }
+        }
+
+        /* Scroll animations */
+        .scroll-reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .scroll-reveal.revealed {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* CASHIER SIDEBAR */
+        .cashier-toggle {
+            position: fixed;
+            top: calc(var(--spacing) * 4);
+            right: calc(var(--spacing) * 4);
+            background: var(--black);
+            color: var(--white);
+            border: none;
+            padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            z-index: 200;
+            transition: all 0.3s;
+        }
+
+        .cashier-toggle:hover {
+            background: var(--gray-900);
+            transform: translateY(-2px);
+        }
+
+        .cashier-sidebar {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: var(--white);
+            border-left: var(--border-weight) solid var(--black);
+            padding: calc(var(--spacing) * 4);
+            z-index: 250;
+            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow-y: auto;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.1);
+        }
+
+        .cashier-sidebar.open {
+            right: 0;
+        }
+
+        .cashier-close {
+            position: absolute;
+            top: calc(var(--spacing) * 2);
+            right: calc(var(--spacing) * 2);
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: var(--spacing);
+        }
+
+        .cashier-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: calc(var(--spacing) * 3);
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+        }
+
+        .form-group {
+            margin-bottom: calc(var(--spacing) * 3);
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 700;
+            margin-bottom: var(--spacing);
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: calc(var(--spacing) * 1.5);
+            border: var(--border-weight) solid var(--black);
+            background: var(--white);
+            font-family: var(--mono);
+            font-size: 0.9rem;
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            box-shadow: 4px 4px 0 var(--black);
+        }
+
+        .btn {
+            width: 100%;
+            padding: calc(var(--spacing) * 2);
+            border: var(--border-weight) solid var(--black);
+            background: var(--black);
+            color: var(--white);
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: calc(var(--spacing) * 2);
+        }
+
+        .btn:hover {
+            background: var(--white);
+            color: var(--black);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--white);
+            color: var(--black);
+        }
+
+        .btn-secondary:hover {
+            background: var(--black);
+            color: var(--white);
+        }
+
+        .alert {
+            padding: calc(var(--spacing) * 2);
+            margin-bottom: calc(var(--spacing) * 2);
+            border: 1px solid;
+            font-size: 0.85rem;
+        }
+
+        .alert-success {
+            background: var(--gray-100);
+            border-color: var(--black);
+        }
+
+        .alert-error {
+            background: var(--black);
+            color: var(--white);
+            border-color: var(--black);
+        }
+
+        .pending-info {
+            padding: calc(var(--spacing) * 2);
+            background: var(--gray-100);
+            border: 1px solid var(--gray-300);
+            margin-bottom: calc(var(--spacing) * 3);
+            font-size: 0.85rem;
+        }
+
+        .pending-count {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: block;
+            margin-bottom: var(--spacing);
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--gray-300);
+            margin: calc(var(--spacing) * 3) 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AIMA</h1>
+            <p class="subtitle">Autonomous Inventory Management Agent</p>
+            <div class="header-meta">
+                <div class="meta-item">
+                    <div class="status-indicator"></div>
+                    <span id="status-text">SYSTEM ACTIVE</span>
+                </div>
+                <div class="meta-item">
+                    <span id="current-time">--:--:--</span>
+                </div>
+                <div class="meta-item">
+                    <span>LAST UPDATE: <span id="last-update">NEVER</span></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Metrics Overview -->
+        <div class="metrics-bar">
+            <div class="card">
+                <div class="card-title">Total Products</div>
+                <div class="metric-value" id="metric-products">—</div>
+                <div class="metric-label">In Catalog</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Total Stock</div>
+                <div class="metric-value" id="metric-stock">—</div>
+                <div class="metric-label">Units Available</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Inventory Value</div>
+                <div class="metric-value" id="metric-value">—</div>
+                <div class="metric-label">USD</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Low Stock</div>
+                <div class="metric-value" id="metric-low">—</div>
+                <div class="metric-label">Alerts</div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Left Column: Inventory Status -->
+            <div>
+                <div class="card scroll-reveal">
+                    <div class="card-title">Inventory Status</div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Stock</th>
+                                    <th>Threshold</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-table">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 2rem;">
+                                        <div class="loading"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card scroll-reveal" style="margin-top: calc(var(--spacing) * 4);">
+                    <div class="card-title">Product Popularity</div>
+                    <div id="popularity-list"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Decisions & Recommendations -->
+            <div>
+                <div class="card scroll-reveal">
+                    <div class="card-title">Restock Recommendations</div>
+                    <div id="restock-list">
+                        <div style="text-align: center; padding: 2rem;">
+                            <div class="loading"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card scroll-reveal" style="margin-top: calc(var(--spacing) * 4);">
+                    <div class="card-title">Recent Decisions</div>
+                    <div id="decisions-list">
+                        <div style="text-align: center; padding: 2rem;">
+                            <div class="loading"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis: Predicted vs Actual -->
+        <div class="card scroll-reveal">
+            <div class="card-title">Demand Analysis: Predicted vs Actual</div>
+            <div class="analysis-grid" id="analysis-grid">
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="loading"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="loadDashboard()" title="Refresh Dashboard">↻</button>
+
+    <script>
+        // Update clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('en-US', { hour12: false });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Scroll reveal animation
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('revealed');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                const response = await fetch('/api/dashboard');
+                const data = await response.json();
+
+                if (!data.success) {
+                    console.error('Failed to load dashboard:', data.error);
+                    return;
+                }
+
+                // Update metrics
+                document.getElementById('metric-products').textContent = data.metrics.total_products;
+                document.getElementById('metric-stock').textContent = data.metrics.total_stock.toLocaleString();
+                document.getElementById('metric-value').textContent = '$' + data.metrics.total_value.toLocaleString();
+                document.getElementById('metric-low').textContent = data.metrics.low_stock_count;
+
+                // Update inventory table
+                renderInventoryTable(data.products);
+
+                // Update popularity list
+                renderPopularityList(data.products);
+
+                // Update restock recommendations
+                renderRestockRecommendations(data.decisions);
+
+                // Update recent decisions
+                renderRecentDecisions(data.decisions);
+
+                // Update analysis
+                renderAnalysis(data.decisions);
+
+                // Update last update time
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        }
+
+        function renderInventoryTable(products) {
+            const tbody = document.getElementById('inventory-table');
+            
+            // Sort by stock level (lowest first)
+            const sorted = [...products].sort((a, b) => a.current_stock - b.current_stock);
+            
+            tbody.innerHTML = sorted.slice(0, 15).map(p => {
+                const status = p.status || 'ok';
+                const statusClass = `status-${status}`;
+                const statusText = status === 'critical' ? 'CRITICAL' : 
+                                 status === 'low' ? 'LOW' : 'OK';
+                
+                return `
+                    <tr>
+                        <td><strong>${p.name}</strong></td>
+                        <td>${p.current_stock}</td>
+                        <td>${p.adaptive_threshold}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderPopularityList(products) {
+            const container = document.getElementById('popularity-list');
+            
+            // Sort by popularity
+            const sorted = [...products]
+                .filter(p => p.popularity_index)
+                .sort((a, b) => (b.popularity_index || 0) - (a.popularity_index || 0))
+                .slice(0, 10);
+            
+            container.innerHTML = sorted.map(p => {
+                const popularity = p.popularity_index || 0;
+                const barWidth = Math.min(100, (popularity / 5) * 100);
+                
+                return `
+                    <div class="popularity-bar" style="margin-bottom: calc(var(--spacing) * 2);">
+                        <div style="min-width: 150px; font-size: 0.85rem;">
+                            <strong>${p.name}</strong>
+                        </div>
+                        <div class="bar-container">
+                            <div class="bar-fill" style="width: ${barWidth}%"></div>
+                        </div>
+                        <div class="bar-value">${popularity.toFixed(2)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderRestockRecommendations(decisions) {
+            const container = document.getElementById('restock-list');
+            
+            const restockDecisions = decisions
+                .filter(d => d.decision_type === 'restock')
+                .slice(0, 5);
+            
+            if (restockDecisions.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--gray-700); padding: 2rem;">No restock recommendations at this time</p>';
+                return;
+            }
+            
+            container.innerHTML = restockDecisions.map(d => `
+                <div class="decision-item">
+                    <div class="decision-header">
+                        <div class="decision-product">${d.product_name}</div>
+                        <div class="decision-time">${new Date(d.decision_date).toLocaleTimeString()}</div>
+                    </div>
+                    <div style="font-size: 0.75rem; margin-bottom: var(--spacing);">
+                        <strong>Order Quantity:</strong> ${d.restock_quantity} units
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--gray-700);">
+                        Stock: ${d.current_stock} / Threshold: ${d.adaptive_threshold.toFixed(0)}
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: ${d.confidence_score * 100}%"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderRecentDecisions(decisions) {
+            const container = document.getElementById('decisions-list');
+            
+            container.innerHTML = decisions.slice(0, 8).map(d => `
+                <div class="decision-item">
+                    <div class="decision-header">
+                        <div class="decision-product">${d.product_name}</div>
+                        <div class="decision-time">${new Date(d.decision_date).toLocaleTimeString()}</div>
+                    </div>
+                    <div class="decision-type ${d.decision_type}">${d.decision_type.toUpperCase()}</div>
+                    <div class="decision-reasoning">${d.reasoning.substring(0, 150)}...</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: ${d.confidence_score * 100}%"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderAnalysis(decisions) {
+            const container = document.getElementById('analysis-grid');
+            
+            // Calculate aggregates
+            const recentDecisions = decisions.slice(0, 10);
+            
+            if (recentDecisions.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--gray-700);">No analysis data available</p>';
+                return;
+            }
+            
+            const avgPredicted = recentDecisions.reduce((sum, d) => sum + (d.predicted_demand || 0), 0) / recentDecisions.length;
+            const avgPopularity = recentDecisions.reduce((sum, d) => sum + (d.popularity_index || 0), 0) / recentDecisions.length;
+            const avgConfidence = recentDecisions.reduce((sum, d) => sum + (d.confidence_score || 0), 0) / recentDecisions.length;
+            
+            container.innerHTML = `
+                <div class="comparison-item">
+                    <div class="comparison-title">Average Predicted Demand</div>
+                    <div class="comparison-values">
+                        <div class="value-item">
+                            <span class="value-number">${avgPredicted.toFixed(1)}</span>
+                            <span class="value-label">Units/Day</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="comparison-item">
+                    <div class="comparison-title">Average Popularity Index</div>
+                    <div class="comparison-values">
+                        <div class="value-item">
+                            <span class="value-number">${avgPopularity.toFixed(2)}</span>
+                            <span class="value-label">Index</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="comparison-item">
+                    <div class="comparison-title">Average Confidence</div>
+                    <div class="comparison-values">
+                        <div class="value-item">
+                            <span class="value-number">${(avgConfidence * 100).toFixed(0)}%</span>
+                            <span class="value-label">Certainty</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Initial load
+        loadDashboard();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadDashboard, 30000);
+
+        // ============================================================
+        // CASHIER FUNCTIONS
+        // ============================================================
+
+        function toggleCashier() {
+            const sidebar = document.getElementById('cashier-sidebar');
+            sidebar.classList.toggle('open');
+            if (sidebar.classList.contains('open')) {
+                loadCashierProducts();
+                loadPendingPreview();
+            }
+        }
+
+        async function loadCashierProducts() {
+            try {
+                const response = await fetch('/api/cashier/products');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const select = document.getElementById('product-select');
+                    select.innerHTML = '<option value="">Select Product...</option>';
+                    
+                    data.products.forEach(p => {
+                        const option = document.createElement('option');
+                        option.value = p.product_id;
+                        option.textContent = `${p.product_id} - ${p.name} (Stock: ${p.stock})`;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading products:', error);
+            }
+        }
+
+        async function loadPendingPreview() {
+            try {
+                const response = await fetch('/api/cashier/pending-preview');
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('pending-count').textContent = data.pending_count;
+                    
+                    const container = document.getElementById('pending-preview');
+                    if (data.pending_count === 0) {
+                        container.innerHTML = '<p style="color: var(--gray-700);">No pending sales</p>';
+                    } else {
+                        container.innerHTML = data.preview.slice(0, 5).map(p => `
+                            <div style="margin-bottom: calc(var(--spacing) * 2); padding-bottom: calc(var(--spacing) * 2); border-bottom: 1px solid var(--gray-300);">
+                                <div style="font-size: 0.85rem; font-weight: 700;">${p.name}</div>
+                                <div style="font-size: 0.75rem; margin-top: 4px;">
+                                    Current: ${p.current_stock} | Pending: -${p.pending_sales} = ${p.projected_stock}
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading pending preview:', error);
+            }
+        }
+
+        async function submitSale() {
+            const productId = document.getElementById('product-select').value;
+            const qty = document.getElementById('qty-input').value;
+            const alertDiv = document.getElementById('cashier-alert');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            if (!productId || !qty) {
+                showAlert('Please select product and enter quantity', 'error');
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processing...';
+            
+            try {
+                const response = await fetch('/api/cashier/submit-sale', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: productId, qty: parseInt(qty) })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`✓ Sale recorded at ${data.timestamp}`, 'success');
+                    document.getElementById('product-select').value = '';
+                    document.getElementById('qty-input').value = '';
+                    loadPendingPreview();
+                } else {
+                    showAlert(`✗ Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`✗ Network error: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Sale';
+            }
+        }
+
+        async function runAgent() {
+            if (!confirm('Run Agent (Demo)? This will process all pending sales and update inventory.')) {
+                return;
+            }
+            
+            const agentBtn = document.getElementById('agent-btn');
+            agentBtn.disabled = true;
+            agentBtn.textContent = 'Running Agent...';
+            
+            try {
+                const response = await fetch('/api/cashier/run-agent', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`✓ Agent completed: ${data.last_run.sales_processed} sales processed, ${data.last_run.restocks_created} restocks created`, 'success');
+                    loadPendingPreview();
+                    loadDashboard(); // Refresh main dashboard
+                } else {
+                    showAlert(`✗ Agent failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`✗ Network error: ${error.message}`, 'error');
+            } finally {
+                agentBtn.disabled = false;
+                agentBtn.textContent = 'Run Agent (Demo)';
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.getElementById('cashier-alert');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            alertDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+
+    <!-- Cashier Toggle Button -->
+    <button class="cashier-toggle" onclick="toggleCashier()">CASHIER</button>
+
+    <!-- Cashier Sidebar -->
+    <div id="cashier-sidebar" class="cashier-sidebar">
+        <button class="cashier-close" onclick="toggleCashier()">✕</button>
+        
+        <h2 class="cashier-title">Cashier</h2>
+        
+        <div id="cashier-alert" class="alert" style="display: none;"></div>
+        
+        <div class="form-group">
+            <label class="form-label">Product</label>
+            <select id="product-select" class="form-select">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Quantity</label>
+            <input type="number" id="qty-input" class="form-input" placeholder="1" min="1" max="1000">
+        </div>
+        
+        <button id="submit-btn" class="btn" onclick="submitSale()">Submit Sale</button>
+        
+        <div class="divider"></div>
+        
+        <div class="pending-info">
+            <label class="form-label">Pending Sales</label>
+            <span class="pending-count" id="pending-count">0</span>
+            <div style="font-size: 0.75rem; color: var(--gray-700);">
+                Not yet processed by agent
+            </div>
+        </div>
+        
+        <div id="pending-preview" style="max-height: 200px; overflow-y: auto; margin-bottom: calc(var(--spacing) * 3);"></div>
+        
+        <button id="agent-btn" class="btn btn-secondary" onclick="runAgent()">Run Agent (Demo)</button>
+        
+        <div style="font-size: 0.7rem; color: var(--gray-700); margin-top: calc(var(--spacing) * 2);">
+            ⚠️ Demo only: Processes pending sales and updates inventory/restock logs
+        </div>
+    </div>
+
+</body>
+</html>
