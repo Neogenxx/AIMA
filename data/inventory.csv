@@ -1,4 +1,21 @@
-product_id,name,stock,base_threshold,adaptive_threshold,popularity_ewma,popularity_index
-PROD-001,Gaming Laptop X1,50,20,25.5,1.2,1.15
-PROD-002,Premium Coffee Beans,100,15,18.0,0.8,0.95
-PROD-003,Wireless Mouse Pro,75,25,30.0,1.5,1.42
+product_id,name,stock,base_threshold,adaptive_threshold,popularity_ewma,popularity_index,cost_price,selling_price
+PROD-001,Gaming Laptop E1,8,19.0,46.684177999999996,8.285309999999999,8.285309999999999,800.0,1200.0
+PROD-002,Wireless Mouse E2,90,31.0,70.0671362,7.301150999999999,7.301150999999999,12.0,25.0
+PROD-003,Mechanical Keyboard E3,67,31.0,32.6,0.84,1.25,50.0,120.0
+PROD-004,USB-C Hub E4,38,26.0,26.7,1.11,1.13,20.0,45.0
+PROD-005,Webcam HD E5,130,28.0,50.1144,4.949,4.949,30.0,70.0
+PROD-006,Bluetooth Speaker E6,21,42.0,43.0,1.49,1.12,25.0,60.0
+PROD-007,Noise-Cancelling Headphones E7,50,38.0,210.33076,23.6751,23.6751,80.0,200.0
+PROD-008,Graphics Tablet E8,40,31.0,34.9742,1.641,1.641,60.0,150.0
+PROD-009,Portable SSD E9,24,32.0,31.9,1.22,0.99,70.0,140.0
+PROD-010,Monitor Stand E10,21,33.0,35.0,0.9,1.3,30.0,65.0
+PROD-011,Ergonomic Chair O11,65,30.0,31.0,0.56,1.16,150.0,350.0
+PROD-012,Standing Desk O12,61,21.0,22.2,0.62,1.29,200.0,500.0
+PROD-013,Desk Lamp O13,45,40.0,40.9,1.27,1.11,20.0,45.0
+PROD-014,Whiteboard O14,99,48.0,46.5,1.26,0.84,40.0,90.0
+PROD-015,Paper Shredder O15,100,45.0,126.63,10.069999999999999,10.069999999999999,50.0,120.0
+PROD-016,Label Maker O16,56,19.0,20.1,0.93,1.28,25.0,55.0
+PROD-017,Stapler Heavy Duty O17,114,19.0,19.7,1.13,1.19,15.0,30.0
+PROD-018,File Cabinet O18,31,28.0,29.0,0.54,1.17,80.0,180.0
+PROD-019,Cork Board O19,110,28.0,27.4,0.77,0.9,12.0,28.0
+PROD-020,Desk Organizer O20,117,44.0,44.5,0.68,1.06,18.0,35.0

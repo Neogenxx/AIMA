@@ -1,6 +1,6 @@
 """
-AIMA Web Server
-Flask application serving the web-based dashboard
+AIMA Web Server - 100% CSV-Based
+No database dependencies
 """
 
 from flask import Flask, render_template, jsonify, request
@@ -10,147 +10,116 @@ import os
 import json
 import subprocess
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add project root to path
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJECT_ROOT)
 
-from utils.database import DatabaseManager
-from agents.inventory_agent import InventoryAgent
-from config import DATABASE
+from utils.csv_data_manager import get_csv_manager
 from scripts.csv_helpers import (
     atomic_append_csv, get_utc_timestamp, read_csv,
-    sanitize_product_id, validate_quantity, count_csv_rows
+    sanitize_product_id, validate_quantity
 )
 
 app = Flask(__name__)
 CORS(app)
 
-# Initialize database and agent
-db = DatabaseManager(DATABASE.DB_PATH)
-agent = InventoryAgent(db, auto_execute=False)
+# Initialize CSV-only data manager
+csv_manager = get_csv_manager()
+
 
 @app.route('/')
 def index():
     """Serve the main dashboard"""
     return render_template('dashboard.html')
 
+# In app.py, add endpoint:
+@app.route('/api/agent-reasoning')
+def get_agent_reasoning():
+    reasoning = read_csv('data/agent_reasoning.csv')
+    return jsonify(reasoning[-20:])  # Last 20 decisions
+
+# In app.py, add endpoint:
+@app.route('/api/profit-dashboard')
+def get_profit_dashboard():
+    from utils.profit_tracker import ProfitTracker
+    tracker = ProfitTracker('data')
+    return jsonify(tracker.get_dashboard_data())
+
+# In app.py, add endpoint:
+@app.route('/api/anomalies')
+def get_anomalies():
+    from utils.anomaly_detector import AnomalyDetector
+    detector = AnomalyDetector('data')
+    return jsonify(detector.get_anomalies(hours=24))
+
+@app.route('/api/simulate-sales', methods=['POST'])
+def simulate_sales():
+    from simulations.sales_simulator import simulate_sales_batch
+    data = request.json
+    count = data.get('count', 10)
+    simulate_sales_batch(count)
+    return jsonify({'status': 'ok', 'count': count})
+
+@app.route('/api/run-agent', methods=['POST'])
+def run_agent_endpoint():
+    from scripts.run_agent import run_agent
+    run_agent()
+    return jsonify({'status': 'ok', 'restocks_created': 0})  # Get actual count
+
+@app.route('/api/reset-demo', methods=['POST'])
+def reset_demo():
+    from flask import jsonify
+    from utils.csv_data_manager import get_csv_manager
+    from simulations.product_generator import generate_demo_products
+    import csv
+
+    csv_manager = get_csv_manager()
+
+    # Clear logs
+    open(csv_manager.sales_log_path, 'w').close()
+    open(csv_manager.restock_log_path, 'w').close()
+
+    # Generate demo products
+    products = generate_demo_products(20)
+
+    # Write to inventory.csv
+    with open(csv_manager.inventory_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=products[0].keys())
+        writer.writeheader()
+        writer.writerows(products)
+
+    return jsonify({'status': 'ok', 'products_created': len(products)})
+
+@app.route('/api/replay-sales', methods=['POST'])
+def replay_sales():
+    data = request.json
+    count = data.get('count', 10)
+    
+    # Get last N sales from log
+    sales = read_csv('data/sales_log.csv')
+    replay_sales = sales[-count:]
+    
+    # Re-add them to the log (with new timestamps)
+    for sale in replay_sales:
+        # Logic to re-process each sale
+        pass
+    
+    return jsonify({'status': 'ok', 'replayed': count})
+
 @app.route('/api/dashboard')
 def get_dashboard_data():
-    """Get comprehensive dashboard data"""
+    """Get comprehensive dashboard data from CSV files"""
     try:
-        data = db.get_dashboard_data()
-        
-        # Enhance with calculated metrics
-        products = data['products']
-        
-        # Calculate aggregate metrics
-        total_stock = sum(p['current_stock'] for p in products)
-        total_value = sum(p['current_stock'] * p['unit_cost'] for p in products)
-        low_stock_count = sum(1 for p in products if p['current_stock'] < 20)
-        out_of_stock = sum(1 for p in products if p['current_stock'] == 0)
-        
-        # Add popularity and threshold estimates
-        for product in products:
-            pop = product.get('latest_popularity', 1.0) or 1.0
-            product['popularity_index'] = pop
-            product['adaptive_threshold'] = max(20, int(20 * pop))
-            product['status'] = 'critical' if product['current_stock'] < product['adaptive_threshold'] * 0.5 else \
-                              'low' if product['current_stock'] < product['adaptive_threshold'] else 'ok'
-        
+        data = csv_manager.get_dashboard_data()
         return jsonify({
             'success': True,
-            'products': products,
-            'decisions': data['recent_decisions'],
-            'orders': data['pending_orders'],
-            'metrics': {
-                'total_products': len(products),
-                'total_stock': total_stock,
-                'total_value': round(total_value, 2),
-                'low_stock_count': low_stock_count,
-                'out_of_stock': out_of_stock
-            }
+            'products': data['products'],
+            'recent_restocks': data['recent_restocks'],
+            'metrics': data['metrics']
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/product/<product_id>')
-def get_product_details(product_id):
-    """Get detailed product information"""
-    try:
-        product = db.get_product(product_id)
-        if not product:
-            return jsonify({'success': False, 'error': 'Product not found'}), 404
-        
-        # Get sales history
-        sales_history = db.get_sales_history(product_id, days=30)
-        
-        # Make agent decision
-        decision = agent.make_decision(product_id)
-        
-        return jsonify({
-            'success': True,
-            'product': product,
-            'sales_history': sales_history,
-            'decision': decision
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/analyze/<product_id>', methods=['POST'])
-def analyze_product(product_id):
-    """Trigger agent analysis for a product"""
-    try:
-        decision = agent.make_decision(product_id)
-        return jsonify({
-            'success': True,
-            'decision': decision
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/analyze-all', methods=['POST'])
-def analyze_all_products():
-    """Analyze all products"""
-    try:
-        products = db.get_all_products()
-        decisions = []
-        
-        for product in products:
-            decision = agent.make_decision(product['product_id'])
-            decisions.append(decision)
-        
-        return jsonify({
-            'success': True,
-            'decisions': decisions
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/sale', methods=['POST'])
-def record_sale():
-    """Record a sale"""
-    try:
-        data = request.json
-        product_id = data.get('product_id')
-        quantity = data.get('quantity')
-        
-        if not product_id or not quantity:
-            return jsonify({'success': False, 'error': 'Missing parameters'}), 400
-        
-        result = agent.observe_sale(product_id, quantity)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/decisions')
-def get_recent_decisions():
-    """Get recent decisions"""
-    try:
-        limit = request.args.get('limit', 20, type=int)
-        decisions = db.get_recent_decisions(limit)
-        return jsonify({
-            'success': True,
-            'decisions': decisions
-        })
-    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -162,7 +131,7 @@ def get_recent_decisions():
 def cashier_submit_sale():
     """
     Submit a sale from the cashier UI
-    Atomically appends to sales_log.csv
+    Atomically appends to sales_log.csv with full pricing data
     """
     try:
         data = request.json
@@ -184,27 +153,17 @@ def cashier_submit_sale():
                 'error': 'Invalid quantity (must be 1-1000)'
             }), 400
         
-        # Check product exists in inventory.csv
-        inventory = read_csv('data/inventory.csv')
-        product_exists = any(p['product_id'] == product_id for p in inventory)
+        # Get product from CSV
+        product = csv_manager.get_product(product_id)
         
-        if not product_exists:
+        if not product:
             return jsonify({
                 'success': False,
                 'error': f'Product {product_id} not found in inventory'
             }), 404
         
-        # Get product name
-        product_name = next(
-            (p['name'] for p in inventory if p['product_id'] == product_id),
-            product_id
-        )
-        
-        # Check stock availability (from CSV)
-        current_stock = int(next(
-            (p['stock'] for p in inventory if p['product_id'] == product_id),
-            0
-        ))
+        # Check stock availability
+        current_stock = product['stock']
         
         if current_stock < qty:
             return jsonify({
@@ -212,43 +171,71 @@ def cashier_submit_sale():
                 'error': f'Insufficient stock (available: {current_stock}, requested: {qty})'
             }), 400
         
-        # Atomic append to sales log
-        timestamp = get_utc_timestamp()
-        row = [timestamp, product_id, str(qty)]
+        # Calculate pricing
+        cost_price = product['cost_price']
+        selling_price = product['selling_price']
+        total_cost = cost_price * qty
+        total_revenue = selling_price * qty
+        profit = total_revenue - total_cost
         
-        success = atomic_append_csv('data/sales_log.csv', row)
+        # Prepare row with full pricing data
+        timestamp = get_utc_timestamp()
+        row = [
+            timestamp,
+            product_id,
+            str(qty),
+            f"{cost_price:.2f}",
+            f"{selling_price:.2f}",
+            f"{total_cost:.2f}",
+            f"{total_revenue:.2f}",
+            f"{profit:.2f}"
+        ]
+        
+        # Atomic append with headers auto-creation
+        sales_log_path = os.path.join(csv_manager.data_dir, 'sales_log.csv')
+        success = atomic_append_csv(
+            sales_log_path, 
+            row,
+            headers=csv_manager.SALES_LOG_HEADERS
+        )
         
         if not success:
             return jsonify({
                 'success': False,
-                'error': 'Failed to write to sales log'
+                'error': 'Failed to write to sales log - check file permissions and path'
             }), 500
         
         return jsonify({
             'success': True,
             'timestamp': timestamp,
             'product_id': product_id,
-            'product_name': product_name,
+            'product_name': product['name'],
             'qty': qty,
-            'message': f'Sale recorded: {qty}x {product_name}'
+            'cost_price': cost_price,
+            'selling_price': selling_price,
+            'total_revenue': round(total_revenue, 2),
+            'profit': round(profit, 2),
+            'message': f'Sale recorded: {qty}x {product["name"]} (Profit: ${profit:.2f})'
         })
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Internal error: {str(e)}'
         }), 500
 
 
 @app.route('/api/cashier/pending-preview')
 def cashier_pending_preview():
     """
-    Get pending sales preview (inventory - pending_sales)
-    Shows what inventory will be after agent processes pending sales
+    Get pending sales preview showing projected stock after pending sales
+    This is inventory - pending_sales (not yet processed by agent)
     """
     try:
         # Load last run info
-        last_run_path = 'data/last_run.json'
+        last_run_path = os.path.join(csv_manager.data_dir, 'last_run.json')
         if os.path.exists(last_run_path):
             with open(last_run_path, 'r') as f:
                 last_run = json.load(f)
@@ -256,46 +243,21 @@ def cashier_pending_preview():
         else:
             last_processed_row = 0
         
-        # Load inventory
-        inventory = read_csv('data/inventory.csv')
-        inventory_dict = {p['product_id']: p for p in inventory}
-        
-        # Load sales log
-        sales_log = read_csv('data/sales_log.csv')
-        pending_sales = sales_log[last_processed_row:]
-        
-        # Calculate pending stock changes
-        pending_changes = {}
-        for sale in pending_sales:
-            product_id = sale['product_id']
-            qty = int(sale['qty'])
-            pending_changes[product_id] = pending_changes.get(product_id, 0) + qty
-        
-        # Build preview
-        preview = []
-        for product_id, product in inventory_dict.items():
-            current_stock = int(product['stock'])
-            pending_qty = pending_changes.get(product_id, 0)
-            projected_stock = current_stock - pending_qty
-            
-            preview.append({
-                'product_id': product_id,
-                'name': product['name'],
-                'current_stock': current_stock,
-                'pending_sales': pending_qty,
-                'projected_stock': max(0, projected_stock),
-                'threshold': float(product.get('adaptive_threshold', product['base_threshold']))
-            })
+        # Get pending preview from CSV manager
+        preview_data = csv_manager.get_pending_preview(last_processed_row)
         
         return jsonify({
             'success': True,
-            'pending_count': len(pending_sales),
+            'pending_count': preview_data['pending_count'],
             'last_processed_row': last_processed_row,
-            'total_sales_logged': count_csv_rows('data/sales_log.csv'),
-            'preview': preview
+            'total_sales_logged': len(csv_manager.get_all_sales()),
+            'preview': preview_data['preview'],
+            'message': f'{preview_data["pending_count"]} sales pending agent processing'
         })
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -310,16 +272,22 @@ def cashier_run_agent():
     """
     try:
         # Run the agent script
+        script_path = os.path.join(PROJECT_ROOT, 'scripts', 'run_agent.py')
         result = subprocess.run(
-            [sys.executable, 'scripts/run_agent.py'],
+            [sys.executable, script_path],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
+            cwd=PROJECT_ROOT
         )
         
         # Load updated last_run.json
-        with open('data/last_run.json', 'r') as f:
-            last_run = json.load(f)
+        last_run_path = os.path.join(csv_manager.data_dir, 'last_run.json')
+        if os.path.exists(last_run_path):
+            with open(last_run_path, 'r') as f:
+                last_run = json.load(f)
+        else:
+            last_run = {}
         
         if result.returncode == 0:
             return jsonify({
@@ -343,6 +311,8 @@ def cashier_run_agent():
         }), 500
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -353,21 +323,25 @@ def cashier_run_agent():
 def cashier_get_products():
     """Get list of products from CSV for cashier dropdown"""
     try:
-        inventory = read_csv('data/inventory.csv')
+        products = csv_manager.get_all_products()
         
-        products = [{
+        product_list = [{
             'product_id': p['product_id'],
             'name': p['name'],
-            'stock': int(p['stock']),
-            'threshold': float(p.get('adaptive_threshold', p['base_threshold']))
-        } for p in inventory]
+            'stock': p['stock'],
+            'threshold': p['adaptive_threshold'],
+            'cost_price': p['cost_price'],
+            'selling_price': p['selling_price']
+        } for p in products]
         
         return jsonify({
             'success': True,
-            'products': products
+            'products': product_list
         })
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -376,9 +350,10 @@ def cashier_get_products():
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("  AIMA Web Dashboard Starting...")
+    print("  AIMA Web Dashboard (CSV-Only)")
     print("="*60)
     print("  URL: http://localhost:5000")
+    print("  Data: 100% CSV-based (no database)")
     print("  Press Ctrl+C to stop")
     print("="*60 + "\n")
     

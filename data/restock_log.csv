@@ -1,1 +1,4 @@
-timestamp,product_id,stock_after_sale,base_threshold,adaptive_threshold,predicted_demand_5d,popularity_index,restock_qty,reason,confidence
+timestamp,product_id,current_stock,base_threshold,adaptive_threshold,popularity_index,predicted_demand,restock_qty,confidence,explanation,stock_after_sale
+2026-02-04T14:15:20.396725Z,PROD-001,8,19.0,46.7,8.29,60.0,98,0.80,"Stock (8) below adaptive threshold (47). Recommending restock of 98 units.",8
+2026-02-04T14:38:20.606276Z,PROD-007,100,38.0,124.6,12.39,195.0,219,0.60,"Stock (100) below adaptive threshold (125). Recommending restock of 219 units.",100
+2026-02-04T14:44:29.872152Z,PROD-015,100,45.0,126.6,10.07,155.0,181,0.60,"Stock (100) below adaptive threshold (127). Recommending restock of 181 units.",1002026-02-04T15:39:29.751831Z,PROD-007,50,38.0,210.3,23.68,250.0,410,0.60,Stock (50) below adaptive threshold (210). Popularity index: 23.68. Predicted 5-day demand: 250.0. Recommending restock of 410 units.

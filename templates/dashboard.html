@@ -632,6 +632,18 @@
             border-color: var(--black);
         }
 
+        .alert-warning {
+            background: var(--gray-900);
+            color: var(--white);
+            border-color: var(--black);
+            animation: pulse-warning 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-warning {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.85; }
+        }
+
         .pending-info {
             padding: calc(var(--spacing) * 2);
             background: var(--gray-100);
@@ -697,6 +709,29 @@
             </div>
         </div>
 
+        <!-- Pending Sales Alert -->
+        <div id="pending-alert" class="alert alert-warning" style="display: none; margin-bottom: calc(var(--spacing) * 4);">
+            <strong>⚠️ PENDING SALES NOT PROCESSED</strong><br>
+            <span id="pending-alert-text">There are pending sales that have not been processed by the agent.</span>
+        </div>
+        <div class="profit-dashboard">
+            <div class="metric-card">
+                <h4>Today's Revenue</h4>
+                <span class="value" id="today-revenue">$0</span>
+            </div>
+            <div class="metric-card">
+                <h4>Today's Profit</h4>
+                <span class="value" id="today-profit">$0</span>
+            </div>
+            <div class="metric-card">
+                <h4>Profit Margin</h4>
+                <span class="value" id="profit-margin">0%</span>
+            </div>
+            <div class="metric-card">
+                <h4>Most Profitable</h4>
+                <span class="value" id="most-profitable">-</span>
+            </div>
+        </div>
         <!-- Main Dashboard Grid -->
         <div class="dashboard-grid">
             <!-- Left Column: Inventory Status -->
@@ -729,7 +764,22 @@
                     <div id="popularity-list"></div>
                 </div>
             </div>
-
+            <div class="reasoning-panel">
+                <h3>🤖 Agent Reasoning</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Stock</th>
+                            <th>Threshold</th>
+                            <th>Decision</th>
+                            <th>Confidence</th>
+                            <th>Explanation</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reasoning-table"></tbody>
+                </table>
+            </div>
             <!-- Right Column: Decisions & Recommendations -->
             <div>
                 <div class="card scroll-reveal">
@@ -762,6 +812,13 @@
             </div>
         </div>
     </div>
+    <div class="demo-controls">
+        <button onclick="simulateRandomSales()">🎲 Simulate Random Sales</button>
+        <button onclick="runAgent()">🤖 Run Agent Now</button>
+        <button onclick="generateRestockOrders()">📦 Generate Restock Orders</button>
+        <button onclick="resetDemoData()">🔄 Reset Demo Data</button>
+        <button onclick="replaySales()">⏪ Replay Last N Sales</button>
+    </div>
 
     <button class="refresh-btn" onclick="loadDashboard()" title="Refresh Dashboard">↻</button>
 
@@ -791,6 +848,45 @@
         document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
 
         // Load dashboard data
+        async function simulateRandomSales() {
+            const response = await fetch('/api/simulate-sales', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({count: 10})
+            });
+            const result = await response.json();
+            alert(`Generated ${result.count} random sales!`);
+            location.reload();
+        }
+
+        async function runAgent() {
+            const response = await fetch('/api/run-agent', {method: 'POST'});
+            const result = await response.json();
+            alert(`Agent run complete! ${result.restocks_created} restocks created.`);
+            location.reload();
+        }
+
+        async function resetDemoData() {
+            if (confirm('Reset all demo data?')) {
+                const response = await fetch('/api/reset-demo', {method: 'POST'});
+                alert('Demo data reset!');
+                location.reload();
+            }
+        }
+
+        async function replaySales() {
+            const count = prompt('How many sales to replay?', '10');
+            if (count) {
+                const response = await fetch('/api/replay-sales', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({count: parseInt(count)})
+                });
+                alert('Replay started!');
+                location.reload();
+            }
+        }
+        
         async function loadDashboard() {
             try {
                 const response = await fetch('/api/dashboard');
@@ -825,8 +921,32 @@
                 // Update last update time
                 document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
 
+                // Check for pending sales and show alert
+                checkPendingSales();
+
             } catch (error) {
                 console.error('Error loading dashboard:', error);
+            }
+        }
+
+        async function checkPendingSales() {
+            try {
+                const response = await fetch('/api/cashier/pending-preview');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const pendingAlert = document.getElementById('pending-alert');
+                    const pendingAlertText = document.getElementById('pending-alert-text');
+                    
+                    if (data.pending_count > 0) {
+                        pendingAlert.style.display = 'block';
+                        pendingAlertText.textContent = `There are ${data.pending_count} pending sales that have not been processed by the agent. Click "CASHIER" → "Run Agent" to process them.`;
+                    } else {
+                        pendingAlert.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking pending sales:', error);
             }
         }
 
@@ -1021,20 +1141,40 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    document.getElementById('pending-count').textContent = data.pending_count;
+                    const pendingCount = data.pending_count;
+                    document.getElementById('pending-count').textContent = pendingCount;
                     
                     const container = document.getElementById('pending-preview');
-                    if (data.pending_count === 0) {
-                        container.innerHTML = '<p style="color: var(--gray-700);">No pending sales</p>';
+                    if (pendingCount === 0) {
+                        container.innerHTML = '<p style="color: var(--gray-700); font-size: 0.85rem; padding: var(--spacing);">✓ No pending sales - inventory is current</p>';
                     } else {
-                        container.innerHTML = data.preview.slice(0, 5).map(p => `
-                            <div style="margin-bottom: calc(var(--spacing) * 2); padding-bottom: calc(var(--spacing) * 2); border-bottom: 1px solid var(--gray-300);">
-                                <div style="font-size: 0.85rem; font-weight: 700;">${p.name}</div>
-                                <div style="font-size: 0.75rem; margin-top: 4px;">
-                                    Current: ${p.current_stock} | Pending: -${p.pending_sales} = ${p.projected_stock}
-                                </div>
+                        const warningHeader = `
+                            <div style="background: var(--gray-900); color: var(--white); padding: calc(var(--spacing) * 2); margin-bottom: var(--spacing); font-size: 0.75rem; font-weight: 700; text-align: center;">
+                                ⚠️ ${pendingCount} SALE${pendingCount > 1 ? 'S' : ''} NOT YET PROCESSED
                             </div>
-                        `).join('');
+                        `;
+                        
+                        const previewItems = data.preview
+                            .filter(p => p.pending_sales > 0)  // Only show products with pending sales
+                            .slice(0, 5)
+                            .map(p => {
+                                const stockClass = p.projected_stock < p.threshold ? 'color: var(--gray-900); font-weight: 700;' : '';
+                                return `
+                                    <div style="margin-bottom: calc(var(--spacing) * 2); padding: calc(var(--spacing) * 1.5); border: 1px solid var(--gray-300); background: var(--gray-100);">
+                                        <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 4px;">${p.name}</div>
+                                        <div style="font-size: 0.75rem; color: var(--gray-700);">
+                                            <div>Current Stock: <strong>${p.current_stock}</strong></div>
+                                            <div>Pending Sales: <strong style="color: var(--gray-900);">-${p.pending_sales}</strong></div>
+                                            <div style="border-top: 1px solid var(--gray-300); margin-top: 4px; padding-top: 4px;">
+                                                Projected: <strong style="${stockClass}">${p.projected_stock}</strong>
+                                                ${p.projected_stock < p.threshold ? ' ⚠️ Below threshold!' : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('');
+                        
+                        container.innerHTML = warningHeader + previewItems;
                     }
                 }
             } catch (error) {
@@ -1066,7 +1206,9 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    showAlert(`✓ Sale recorded at ${data.timestamp}`, 'success');
+                    const profitDisplay = data.profit ? ` | Profit: $${data.profit.toFixed(2)}` : '';
+                    const revenueDisplay = data.total_revenue ? ` | Revenue: $${data.total_revenue.toFixed(2)}` : '';
+                    showAlert(`✓ Sale recorded! ${data.qty}x ${data.product_name}${revenueDisplay}${profitDisplay}`, 'success');
                     document.getElementById('product-select').value = '';
                     document.getElementById('qty-input').value = '';
                     loadPendingPreview();

@@ -1,5 +1,7 @@
 {
-  "timestamp": "2026-02-04T09:09:54.777059Z",
-  "status": "fail",
-  "error": "'charmap' codec can't encode character '\\u2192' in position 33: character maps to <undefined>"
+  "timestamp": "2026-02-04T15:39:29.789229Z",
+  "status": "ok",
+  "last_processed_row": 10,
+  "sales_processed": 1,
+  "restocks_created": 1
 }

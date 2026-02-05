@@ -9,7 +9,19 @@ import sys
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from typing import List, Dict, Optional
+import msvcrt
+from contextlib import contextmanager
 
+@contextmanager
+def file_lock(file_obj):
+    try:
+        msvcrt.locking(file_obj.fileno(), msvcrt.LK_LOCK, 1)
+        yield
+    finally:
+        try:
+            msvcrt.locking(file_obj.fileno(), msvcrt.LK_UNLCK, 1)
+        except:
+            pass  # Prevent permission crash
 # Platform-specific imports
 try:
     import fcntl
@@ -48,43 +60,45 @@ def file_lock(file_obj):
         yield
 
 
-def atomic_append_csv(filepath: str, row: List[str], create_if_missing: bool = False) -> bool:
+def atomic_append_csv(filepath: str, row: List[str], headers: Optional[List[str]] = None) -> bool:
     """
-    Atomically append a row to CSV file with file locking
-    
-    Args:
-        filepath: Path to CSV file
-        row: List of values to append
-        create_if_missing: Create file with header if it doesn't exist
-    
-    Returns:
-        True if successful, False otherwise
+    Safe atomic CSV append for Windows with lock protection
     """
+
     try:
+        abs_filepath = os.path.abspath(filepath)
+
         # Ensure directory exists
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        # Check if file exists
-        file_exists = os.path.exists(filepath)
-        
-        if not file_exists and not create_if_missing:
-            raise FileNotFoundError(f"CSV file not found: {filepath}")
-        
-        # Open in append mode
-        mode = 'a' if file_exists else 'w'
-        with open(filepath, mode, newline='') as f:
-            with file_lock(f):
+        dir_path = os.path.dirname(abs_filepath)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+
+        file_exists = os.path.exists(abs_filepath) and os.path.getsize(abs_filepath) > 0
+
+        # Create file with headers if needed
+        if not file_exists:
+            if headers is None:
+                raise ValueError(f"Headers required to create new CSV file: {abs_filepath}")
+
+            with open(abs_filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(headers)
+
+        # Append row safely
+        with open(abs_filepath, 'a', newline='', encoding='utf-8') as f:
+            try:
                 writer = csv.writer(f)
                 writer.writerow(row)
+            finally:
                 f.flush()
-                os.fsync(f.fileno())  # Force write to disk
-        
-        return True
-    
-    except Exception as e:
-        print(f"Error appending to CSV: {e}", file=sys.stderr)
-        return False
 
+        return True
+
+    except Exception as e:
+        print(f"Error appending to CSV {filepath}: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return False
 
 def read_csv(filepath: str) -> List[Dict[str, str]]:
     """

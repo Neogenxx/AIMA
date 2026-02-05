@@ -1,47 +1,186 @@
 """
 AIMA - Autonomous Inventory Management Agent
-Main Application Entry Point
+Main Application Entry Point (CSV-Only Version)
 """
 
 import sys
 import argparse
-from engine.core import AIMAEngine, AIMACommandProcessor
-from ui.dashboard import run_interactive_dashboard
-from tests.test_aima import run_tests
+from pathlib import Path
+
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.csv_data_manager import get_csv_manager
+from scripts.run_agent import run_agent
+import subprocess
+
+
+def run_demo(num_products: int = 20, simulate_sales: int = 50):
+    """Setup demo environment with CSV data"""
+    print("\n🚀 Setting up AIMA Demo Environment (CSV-Only)...\n")
+    
+    csv_manager = get_csv_manager()
+    
+    # Generate sample products
+    from simulations.product_generator import generate_demo_products
+    products = generate_demo_products(num_products)
+    
+    # Write to inventory.csv
+    success = csv_manager.update_inventory_batch({
+        p['product_id']: p for p in products
+    })
+    
+    if success:
+        print(f"✅ Created {num_products} products in inventory.csv")
+    else:
+        print("❌ Failed to create products")
+        return
+    
+    # Optionally simulate sales
+    if simulate_sales > 0:
+        from simulations.sales_simulator import simulate_sales_batch
+        simulate_sales_batch(simulate_sales)
+        print(f"✅ Simulated {simulate_sales} sales transactions")
+    
+    print("\n" + "=" * 60)
+    print("Demo Setup Complete!")
+    print("=" * 60)
+    print("Next steps:")
+    print("  python web_server.py         # Launch web dashboard")
+    print("  python scripts/run_agent.py  # Process pending sales")
+    print("=" * 60 + "\n")
+
+
+def run_dashboard():
+    """Launch web dashboard"""
+    print("\n📊 Launching AIMA Dashboard (CSV-Only)...")
+    print("URL: http://localhost:5000")
+    print("Press Ctrl+C to stop\n")
+    
+    # Import and run Flask app
+    from web_server import app
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
+
+def run_analysis():
+    """Analyze all products and show statistics"""
+    print("\n📊 Analyzing Inventory (CSV-Only)...\n")
+    
+    csv_manager = get_csv_manager()
+    data = csv_manager.get_dashboard_data()
+    
+    products = data['products']
+    metrics = data['metrics']
+    
+    print("=" * 80)
+    print("INVENTORY SUMMARY")
+    print("=" * 80)
+    print(f"Total Products: {metrics['total_products']}")
+    print(f"Total Stock: {metrics['total_stock']} units")
+    print(f"Total Value: ${metrics['total_value']:,.2f}")
+    print(f"Low Stock Items: {metrics['low_stock_count']}")
+    print(f"Out of Stock: {metrics['out_of_stock']}")
+    print(f"Total Revenue: ${metrics['total_revenue']:,.2f}")
+    print(f"Total Profit: ${metrics['total_profit']:,.2f}")
+    print("=" * 80)
+    
+    # Show products by status
+    critical = [p for p in products if p['status'] == 'critical']
+    low = [p for p in products if p['status'] == 'low']
+    ok = [p for p in products if p['status'] == 'ok']
+    
+    if critical:
+        print(f"\n🚨 CRITICAL ({len(critical)} items):")
+        for p in critical[:10]:
+            print(f"  {p['product_id']}: {p['name']} - Stock: {p['stock']} (Threshold: {p['adaptive_threshold']:.0f})")
+    
+    if low:
+        print(f"\n⚠️  LOW STOCK ({len(low)} items):")
+        for p in low[:10]:
+            print(f"  {p['product_id']}: {p['name']} - Stock: {p['stock']} (Threshold: {p['adaptive_threshold']:.0f})")
+    
+    print(f"\n✅ OK ({len(ok)} items)")
+    
+    # Show recent restocks
+    print("\n" + "=" * 80)
+    print("RECENT RESTOCK DECISIONS")
+    print("=" * 80)
+    
+    restocks = data['recent_restocks']
+    for r in restocks[-10:]:
+        print(f"  {r['timestamp']}: {r['product_id']} → {r['restock_qty']} units")
+        print(f"    Reason: {r['reason']} (confidence: {float(r['confidence']):.0%})")
+
+
+def run_pending_check():
+    """Check pending sales status"""
+    print("\n📋 Checking Pending Sales...\n")
+    
+    csv_manager = get_csv_manager()
+    
+    import json
+    import os
+    last_run_path = os.path.join(csv_manager.data_dir, 'last_run.json')
+    
+    if os.path.exists(last_run_path):
+        with open(last_run_path, 'r') as f:
+            last_run = json.load(f)
+        last_processed = last_run.get('last_processed_row', 0)
+    else:
+        last_processed = 0
+    
+    all_sales = csv_manager.get_all_sales()
+    pending = all_sales[last_processed:]
+    
+    print(f"Total sales logged: {len(all_sales)}")
+    print(f"Last processed: {last_processed}")
+    print(f"Pending sales: {len(pending)}")
+    
+    if pending:
+        print("\n" + "=" * 80)
+        print("PENDING SALES (Not Yet Processed by Agent)")
+        print("=" * 80)
+        
+        # Group by product
+        from collections import defaultdict
+        by_product = defaultdict(int)
+        for sale in pending:
+            by_product[sale['product_id']] += sale['qty']
+        
+        for product_id, qty in sorted(by_product.items()):
+            product = csv_manager.get_product(product_id)
+            if product:
+                projected = max(0, product['stock'] - qty)
+                print(f"  {product_id}: {product['name']}")
+                print(f"    Current: {product['stock']} → Projected: {projected} (Pending: -{qty})")
+        
+        print("\n💡 Run agent to process: python scripts/run_agent.py")
+    else:
+        print("\n✅ All sales have been processed by agent")
+
+
 
 def main():
     """Main application entry point"""
     
     parser = argparse.ArgumentParser(
-        description="AIMA - Autonomous Inventory Management Agent",
+        description="AIMA - Autonomous Inventory Management Agent (CSV-Only)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python app.py demo              # Setup demo environment and run simulation
-  python app.py dashboard         # Launch interactive dashboard
-  python app.py monitor           # Run continuous monitoring
-  python app.py analyze           # Analyze all products
-  python app.py test              # Run test suite
-  python app.py interactive       # Interactive command mode
+  python app.py demo              # Setup demo environment
+  python app.py dashboard         # Launch web dashboard
+  python app.py analyze           # Analyze inventory
+  python app.py agent             # Process pending sales
+  python app.py pending           # Check pending sales status
         """
     )
     
     parser.add_argument(
         'command',
-        choices=['demo', 'dashboard', 'monitor', 'analyze', 'test', 'interactive', 'simulate'],
+        choices=['demo', 'dashboard', 'analyze', 'agent', 'pending'],
         help='Command to execute'
-    )
-    
-    parser.add_argument(
-        '--db',
-        default='data/aima.db',
-        help='Database file path (default: data/aima.db)'
-    )
-    
-    parser.add_argument(
-        '--auto-execute',
-        action='store_true',
-        help='Enable automatic execution of restock orders'
     )
     
     parser.add_argument(
@@ -52,100 +191,30 @@ Examples:
     )
     
     parser.add_argument(
-        '--days',
+        '--sales',
         type=int,
-        default=30,
-        help='Number of days to simulate (default: 30)'
+        default=50,
+        help='Number of sales to simulate in demo (default: 50)'
     )
     
     args = parser.parse_args()
     
     # Execute command
-    if args.command == 'test':
-        # Run test suite
-        print("\n🧪 Running AIMA Test Suite...\n")
-        success = run_tests()
-        sys.exit(0 if success else 1)
+    if args.command == 'demo':
+        run_demo(num_products=args.products, simulate_sales=args.sales)
     
     elif args.command == 'dashboard':
-        # Launch dashboard
-        print(f"\n📊 Launching AIMA Dashboard...")
-        print(f"Database: {args.db}\n")
-        run_interactive_dashboard(args.db)
-    
-    elif args.command == 'demo':
-        # Setup demo environment
-        print("\n🚀 Setting up AIMA Demo Environment...\n")
-        engine = AIMAEngine(db_path=args.db, auto_execute=args.auto_execute)
-        
-        result = engine.setup_demo_environment(
-            num_products=args.products,
-            simulate_days=args.days
-        )
-        
-        print("\n" + "=" * 60)
-        print("Demo Setup Complete!")
-        print("=" * 60)
-        print(f"Products created: {result['products_created']}")
-        print(f"Days simulated: {result['days_simulated']}")
-        print(f"Total sales: {result['simulation_results']['total_sales']}")
-        print(f"Initial decisions: {result['initial_decisions']}")
-        print("=" * 60)
-        
-        # Show performance report
-        print("\n" + engine.generate_performance_report())
-        
-        print("\nNext steps:")
-        print("  python app.py dashboard      # View dashboard")
-        print("  python app.py interactive    # Interactive mode")
-    
-    elif args.command == 'monitor':
-        # Run continuous monitoring
-        print("\n🔄 Starting Continuous Monitoring Mode...\n")
-        engine = AIMAEngine(db_path=args.db, auto_execute=args.auto_execute)
-        engine.run_continuous_monitoring(interval_seconds=60)
+        run_dashboard()
     
     elif args.command == 'analyze':
-        # Analyze all products
-        print("\n📊 Analyzing All Products...\n")
-        engine = AIMAEngine(db_path=args.db, auto_execute=args.auto_execute)
-        decisions = engine.agent.analyze_all_products()
-        
-        print(f"\n✓ Analysis complete: {len(decisions)} products analyzed")
-        print("\n" + engine.generate_performance_report())
+        run_analysis()
     
-    elif args.command == 'simulate':
-        # Simulate sales day
-        print("\n🎲 Simulating Sales Activity...\n")
-        engine = AIMAEngine(db_path=args.db, auto_execute=args.auto_execute)
-        result = engine.simulate_sales_day()
-        
-        print("\n" + engine.generate_performance_report())
+    elif args.command == 'agent':
+        # Run agent script
+        run_agent()
     
-    elif args.command == 'interactive':
-        # Interactive command mode
-        print("\n💬 AIMA Interactive Mode")
-        print("Type 'help' for available commands, 'exit' to quit\n")
-        
-        engine = AIMAEngine(db_path=args.db, auto_execute=args.auto_execute)
-        processor = AIMACommandProcessor(engine)
-        
-        try:
-            while True:
-                command = input("\nAIMA> ").strip()
-                
-                if command.lower() in ['exit', 'quit', 'q']:
-                    break
-                
-                if command:
-                    response = processor.process_command(command)
-                    if response:
-                        print(response)
-        
-        except KeyboardInterrupt:
-            print("\n")
-        
-        engine.shutdown()
+    elif args.command == 'pending':
+        run_pending_check()
 
 
 if __name__ == "__main__":
